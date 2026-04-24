@@ -6,23 +6,34 @@
     <title>BagGuard - 实时位置追踪</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1a202c; color: white; display: flex; flex-direction: column; height: 100vh; }
-        header { background-color: #2d3748; padding: 20px; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
-        .container { display: flex; flex: 1; padding: 20px; gap: 20px; }
-        #map { flex: 2; border-radius: 12px; border: 2px solid #4a5568; height: 100%; }
-        .sidebar { flex: 1; display: flex; flex-direction: column; gap: 20px; }
+        body { margin: 0; font-family: 'Segoe UI', sans-serif; background-color: #1a202c; color: white; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        header { background-color: #2d3748; padding: 15px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3); z-index: 100; }
+        .container { display: flex; flex: 1; padding: 20px; gap: 20px; box-sizing: border-box; height: calc(100vh - 80px); }
+        
+        /* 修正点：确保地图容器有明确的宽高和背景色 */
+        #map { 
+            flex: 2; 
+            background: #2d3748; 
+            border-radius: 12px; 
+            border: 2px solid #4a5568; 
+            height: 100%; 
+            min-height: 400px; /* 强制最小高度 */
+            z-index: 1;
+        }
+
+        .sidebar { flex: 1; display: flex; flex-direction: column; gap: 20px; min-width: 300px; }
         .card { background-color: #2d3748; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        h2 { margin-top: 0; color: #63b3ed; font-size: 1.2rem; }
-        .data-point { margin: 10px 0; font-size: 1.1rem; }
-        .status { color: #48bb78; font-weight: bold; }
-        .footer { text-align: center; padding: 10px; font-size: 0.8rem; color: #a0aec0; }
+        h2 { margin-top: 0; color: #63b3ed; font-size: 1.1rem; border-bottom: 1px solid #4a5568; padding-bottom: 10px; }
+        .data-point { margin: 12px 0; font-size: 1rem; }
+        .status-online { color: #48bb78; font-weight: bold; }
+        .footer { text-align: center; padding: 5px; font-size: 0.7rem; color: #718096; }
     </style>
 </head>
 <body>
 
 <header>
-    <h1>🛡️ BagGuard 实时追踪系统</h1>
-    <p>自动从 ThingSpeak 读取数据 • 每 15 秒更新一次</p>
+    <h1 style="margin:0; font-size: 1.5rem;">🛡️ BagGuard 实时追踪系统</h1>
+    <p style="margin:5px 0 0; color: #a0aec0; font-size: 0.9rem;">自动从 ThingSpeak 读取数据 • 每 15 秒同步</p>
 </header>
 
 <div class="container">
@@ -31,16 +42,16 @@
     <div class="sidebar">
         <div class="card">
             <h2>📍 设备状态</h2>
-            <div class="data-point">状态: <span id="status" class="status">正在连接...</span></div>
-            <div class="data-point">纬度: <span id="lat">---</span></div>
-            <div class="data-point">经度: <span id="lon">---</span></div>
-            <div class="data-point">最后更新: <span id="time">---</span></div>
+            <div class="data-point">状态: <span id="status" class="status-online">正在连接...</span></div>
+            <div class="data-point">纬度: <span id="lat" style="color:#f6ad55">---</span></div>
+            <div class="data-point">经度: <span id="lon" style="color:#f6ad55">---</span></div>
+            <div class="data-point">更新: <span id="time" style="font-size: 0.8rem; color:#cbd5e0">---</span></div>
         </div>
 
         <div class="card">
             <h2>🛠️ 手动解析 (备用)</h2>
-            <textarea id="manualInput" style="width: 100%; height: 60px; background: #1a202c; color: white; border: 1px solid #4a5568; border-radius: 5px;" placeholder="+CGPSINFO: 2235.1234,N,11355.1234,E..."></textarea>
-            <button onclick="parseManual()" style="width: 100%; margin-top: 10px; padding: 10px; background: #e53e3e; color: white; border: none; border-radius: 5px; cursor: pointer;">解析并显示在地图</button>
+            <textarea id="manualInput" style="width: 100%; height: 50px; background: #1a202c; color: #cbd5e0; border: 1px solid #4a5568; border-radius: 5px; padding: 5px;" placeholder="粘贴 AT 指令返回内容..."></textarea>
+            <button onclick="parseManual()" style="width: 100%; margin-top: 10px; padding: 10px; background: #e53e3e; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">解析并在地图显示</button>
         </div>
     </div>
 </div>
@@ -49,74 +60,81 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    // --- 配置区 ---
-    const channelID = "3336521"; 
-    const readAPIKey = "M3EDCYNO6BNOICSA";
-    // --------------
+    // --- 请在此处修改你的 API 信息 ---
+    const channelID = "3336521"; // 示例 ID
+    const readAPIKey = "M3EDCYNO6BNOICSA"; // 你的 Read API Key
+    // ----------------------------
 
-    // 初始化地图 (默认定位到香港/深圳附近)
-    var map = L.map('map').setView([22.3193, 114.1694], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
+    var map, marker;
 
-    var marker = L.marker([22.3193, 114.1694]).addTo(map);
+    // 初始化地图
+    function initMap() {
+        // 初始坐标设为香港 (根据你的截图)
+        map = L.map('map').setView([22.3193, 114.1694], 15);
+        
+        // 使用 OpenStreetMap 图层
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
 
-    // 从 ThingSpeak 获取数据
+        marker = L.marker([22.3193, 114.1694]).addTo(map);
+        
+        // 关键步骤：解决容器大小初始化不准确的问题
+        setTimeout(() => { map.invalidateSize(); }, 500);
+    }
+
     function fetchData() {
         const url = `https://api.thingspeak.com/channels/${channelID}/feeds.json?api_key=${readAPIKey}&results=1`;
 
         fetch(url)
-            .then(response => response.json())
+            .then(res => res.json())
             .then(data => {
-                const feed = data.feeds[0];
-                if (feed) {
+                if (data.feeds && data.feeds.length > 0) {
+                    const feed = data.feeds[0];
                     const lat = parseFloat(feed.field1);
                     const lon = parseFloat(feed.field2);
-                    const time = new Date(feed.created_at).toLocaleString();
+                    const time = new Date(feed.created_at).toLocaleString('zh-CN');
 
                     if (!isNaN(lat) && !isNaN(lon)) {
-                        updateMap(lat, lon, time);
+                        updateUI(lat, lon, time);
                     }
                 }
             })
             .catch(err => {
-                console.error("读取失败:", err);
                 document.getElementById('status').innerText = "读取失败";
-                document.getElementById('status').style.color = "#f56565";
+                document.getElementById('status').style.color = "#fc8181";
             });
     }
 
-    function updateMap(lat, lon, time) {
+    function updateUI(lat, lon, time) {
         document.getElementById('lat').innerText = lat.toFixed(6);
         document.getElementById('lon').innerText = lon.toFixed(6);
         document.getElementById('time').innerText = time;
         document.getElementById('status').innerText = "在线";
-        document.getElementById('status').style.color = "#48bb78";
 
-        const newPos = [lat, lon];
-        marker.setLatLng(newPos);
-        map.panTo(newPos);
-        marker.bindPopup("最后位置: " + time).openPopup();
+        const pos = [lat, lon];
+        marker.setLatLng(pos);
+        map.panTo(pos);
+        marker.bindPopup("最后更新时间:<br>" + time).openPopup();
     }
 
-    // 手动解析备用逻辑
     function parseManual() {
         const input = document.getElementById('manualInput').value;
-        // 简单的逻辑：寻找数字并解析 (根据 +CGPSINFO 格式)
-        const parts = input.split(',');
-        if (parts.length > 4) {
-            let lat = parseFloat(parts[0].replace(/[^0-9.]/g, '')) / 100; // 粗略转换
-            let lon = parseFloat(parts[2].replace(/[^0-9.]/g, '')) / 100;
-            updateMap(lat, lon, "手动输入数据");
-        } else {
-            alert("格式不正确，请贴入完整的 AT 指令返回内容");
+        const regex = /([0-9]+\.[0-9]+)/g;
+        const matches = input.match(regex);
+        if (matches && matches.length >= 2) {
+            // 注意：ATD指令中的坐标格式可能需要转换，这里做简单处理
+            updateUI(parseFloat(matches[0]), parseFloat(matches[1]), "手动触发");
         }
     }
 
-    // 轮询：每15秒更新一次 (ThingSpeak 免费版限制)
-    setInterval(fetchData, 15000);
-    fetchData(); // 初始加载
+    // 页面加载后初始化
+    window.onload = () => {
+        initMap();
+        fetchData();
+        setInterval(fetchData, 15000); // 每15秒同步一次
+    };
 </script>
 </body>
 </html>
