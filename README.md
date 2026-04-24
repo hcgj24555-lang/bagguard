@@ -80,7 +80,7 @@
             color: '#63b3ed',      // 边框颜色
             fillColor: '#63b3ed',  // 填充颜色
             fillOpacity: 0.2,      // 透明度 (0.2 很合适)
-            radius:800            // 初始半径 (LBS 默认为 800 米)
+            radius:1000            // 初始半径 (LBS 默认为 1000 米)
         }).addTo(map);
         
         setTimeout(() => { map.invalidateSize(); }, 500);
