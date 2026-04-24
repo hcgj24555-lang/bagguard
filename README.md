@@ -1,110 +1,122 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>BagGuard - 行李實時定位系統</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BagGuard - 实时位置追踪</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        :root { --primary: #60a5fa; --bg: #0f172a; --card: #1e293b; --accent: #f59e0b; }
-        body { font-family: system-ui; background: var(--bg); color: white; margin: 0; padding: 20px; }
-        .main { display: grid; grid-template-columns: 1fr 380px; gap: 20px; max-width: 1300px; margin: 0 auto; }
-        @media (max-width: 900px) { .main { grid-template-columns: 1fr; } }
-        #map { height: 650px; border-radius: 24px; border: 1px solid #334155; }
-        .card { background: var(--card); padding: 25px; border-radius: 24px; border: 1px solid #334155; }
-        .status { padding: 12px; border-radius: 12px; background: #334155; color: #94a3b8; text-align: center; font-weight: bold; margin-bottom: 20px; }
-        .online { background: #064e3b; color: #4ade80; border: 1px solid #059669; }
-        .coord-box { background: #0f172a; padding: 15px; border-radius: 15px; margin-bottom: 15px; border-left: 4px solid var(--primary); }
-        .label { color: #94a3b8; font-size: 0.75rem; margin-bottom: 5px; }
-        .value { font-family: monospace; font-size: 1.3rem; color: var(--primary); }
-        .btn { display: block; width: 100%; padding: 15px; border-radius: 12px; border: none; font-weight: bold; cursor: pointer; text-align: center; text-decoration: none; margin-top: 10px; transition: 0.2s; }
-        .btn-google { background: var(--accent); color: #0f172a; }
-        .btn:hover { transform: translateY(-2px); opacity: 0.9; }
+        body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1a202c; color: white; display: flex; flex-direction: column; height: 100vh; }
+        header { background-color: #2d3748; padding: 20px; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+        .container { display: flex; flex: 1; padding: 20px; gap: 20px; }
+        #map { flex: 2; border-radius: 12px; border: 2px solid #4a5568; height: 100%; }
+        .sidebar { flex: 1; display: flex; flex-direction: column; gap: 20px; }
+        .card { background-color: #2d3748; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        h2 { margin-top: 0; color: #63b3ed; font-size: 1.2rem; }
+        .data-point { margin: 10px 0; font-size: 1.1rem; }
+        .status { color: #48bb78; font-weight: bold; }
+        .footer { text-align: center; padding: 10px; font-size: 0.8rem; color: #a0aec0; }
     </style>
 </head>
 <body>
 
-<div class="main">
+<header>
+    <h1>🛡️ BagGuard 实时追踪系统</h1>
+    <p>自动从 ThingSpeak 读取数据 • 每 15 秒更新一次</p>
+</header>
+
+<div class="container">
     <div id="map"></div>
 
-    <div class="side">
+    <div class="sidebar">
         <div class="card">
-            <h2 style="margin-top:0">🛡️ BagGuard 監控中</h2>
-            <div id="live-status" class="status">🔄 同步數據中...</div>
-            
-            <div class="coord-box">
-                <div class="label">緯度 LATITUDE</div>
-                <div id="live-lat" class="value">—</div>
-            </div>
-            <div class="coord-box">
-                <div class="label">經度 LONGITUDE</div>
-                <div id="live-lng" class="value">—</div>
-            </div>
-            
-            <p id="last-update" style="font-size: 0.85rem; color: #94a3b8; margin: 15px 0;"></p>
-            
-            <a id="google-link" href="#" target="_blank" class="btn btn-google" style="display:none">
-                🌐 在 Google Maps 查看詳細地址
-            </a>
-            
-            <button onclick="getBrowserLocation()" class="btn" style="background:#475569; color:white;">顯示我的位置</button>
+            <h2>📍 设备状态</h2>
+            <div class="data-point">状态: <span id="status" class="status">正在连接...</span></div>
+            <div class="data-point">纬度: <span id="lat">---</span></div>
+            <div class="data-point">经度: <span id="lon">---</span></div>
+            <div class="data-point">最后更新: <span id="time">---</span></div>
+        </div>
+
+        <div class="card">
+            <h2>🛠️ 手动解析 (备用)</h2>
+            <textarea id="manualInput" style="width: 100%; height: 60px; background: #1a202c; color: white; border: 1px solid #4a5568; border-radius: 5px;" placeholder="+CGPSINFO: 2235.1234,N,11355.1234,E..."></textarea>
+            <button onclick="parseManual()" style="width: 100%; margin-top: 10px; padding: 10px; background: #e53e3e; color: white; border: none; border-radius: 5px; cursor: pointer;">解析并显示在地图</button>
         </div>
     </div>
 </div>
 
+<div class="footer">Powered by ESP32 + A7670X + Leaflet.js</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    const CHANNEL_ID = "3336521"; // 你的 ThingSpeak 頻道
-    let map = L.map('map').setView([22.2894, 113.9429], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-    
-    let bagMarker = null;
+    // --- 配置区 ---
+    const channelID = "3336521"; 
+    const readAPIKey = "M3EDCYNO6BNOICSA";
+    // --------------
 
-    function fetchUpdate() {
-        // 使用 feeds/last.json 同時獲取 field1(纬度) 和 field2(经度)
-        fetch(`https://api.thingspeak.com/channels/${CHANNEL_ID}/feeds/last.json`)
-            .then(res => res.json())
+    // 初始化地图 (默认定位到香港/深圳附近)
+    var map = L.map('map').setView([22.3193, 114.1694], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    var marker = L.marker([22.3193, 114.1694]).addTo(map);
+
+    // 从 ThingSpeak 获取数据
+    function fetchData() {
+        const url = `https://api.thingspeak.com/channels/${channelID}/feeds.json?api_key=${readAPIKey}&results=1`;
+
+        fetch(url)
+            .then(response => response.json())
             .then(data => {
-                const lat = parseFloat(data.field1);
-                const lng = parseFloat(data.field2);
-                
-                if (!isNaN(lat) && !isNaN(lng)) {
-                    // 更新地圖標記
-                    if (bagMarker) bagMarker.remove();
-                    bagMarker = L.marker([lat, lng]).addTo(map)
-                        .bindPopup("<b>行李位置</b><br>最後同步: " + new Date(data.created_at).toLocaleTimeString())
-                        .openPopup();
-                    
-                    map.panTo([lat, lng]);
+                const feed = data.feeds[0];
+                if (feed) {
+                    const lat = parseFloat(feed.field1);
+                    const lon = parseFloat(feed.field2);
+                    const time = new Date(feed.created_at).toLocaleString();
 
-                    // 更新 UI 文字
-                    document.getElementById('live-lat').innerText = lat.toFixed(6);
-                    document.getElementById('live-lng').innerText = lng.toFixed(6);
-                    document.getElementById('last-update').innerText = "最後通訊: " + new Date(data.created_at).toLocaleString();
-                    
-                    const statusBox = document.getElementById('live-status');
-                    statusBox.innerText = "✅ 設備在線";
-                    statusBox.className = "status online";
-
-                    // 更新 Google 地圖按鈕連結
-                    const link = document.getElementById('google-link');
-                    link.href = `https://www.google.com/maps?q=${lat},${lng}`;
-                    link.style.display = "block";
+                    if (!isNaN(lat) && !isNaN(lon)) {
+                        updateMap(lat, lon, time);
+                    }
                 }
             })
-            .catch(() => {
-                document.getElementById('live-status').innerText = "⚠️ 數據連接異常";
+            .catch(err => {
+                console.error("读取失败:", err);
+                document.getElementById('status').innerText = "读取失败";
+                document.getElementById('status').style.color = "#f56565";
             });
     }
 
-    // 每 5 秒刷新一次
-    setInterval(fetchUpdate, 5000);
-    window.onload = fetchUpdate;
+    function updateMap(lat, lon, time) {
+        document.getElementById('lat').innerText = lat.toFixed(6);
+        document.getElementById('lon').innerText = lon.toFixed(6);
+        document.getElementById('time').innerText = time;
+        document.getElementById('status').innerText = "在线";
+        document.getElementById('status').style.color = "#48bb78";
 
-    function getBrowserLocation() {
-        navigator.geolocation.getCurrentPosition(p => {
-            L.circle([p.coords.latitude, p.coords.longitude], {radius: 80, color: 'red'}).addTo(map).bindPopup("我的位置");
-        });
+        const newPos = [lat, lon];
+        marker.setLatLng(newPos);
+        map.panTo(newPos);
+        marker.bindPopup("最后位置: " + time).openPopup();
     }
+
+    // 手动解析备用逻辑
+    function parseManual() {
+        const input = document.getElementById('manualInput').value;
+        // 简单的逻辑：寻找数字并解析 (根据 +CGPSINFO 格式)
+        const parts = input.split(',');
+        if (parts.length > 4) {
+            let lat = parseFloat(parts[0].replace(/[^0-9.]/g, '')) / 100; // 粗略转换
+            let lon = parseFloat(parts[2].replace(/[^0-9.]/g, '')) / 100;
+            updateMap(lat, lon, "手动输入数据");
+        } else {
+            alert("格式不正确，请贴入完整的 AT 指令返回内容");
+        }
+    }
+
+    // 轮询：每15秒更新一次 (ThingSpeak 免费版限制)
+    setInterval(fetchData, 15000);
+    fetchData(); // 初始加载
 </script>
 </body>
 </html>
