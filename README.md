@@ -2,127 +2,85 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BagGuard • 即時位置追蹤</title>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <title>BagGuard - 行李安全衛士</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-        :root { --red: #e63939; }
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family:'Inter',sans-serif; background:#0f172a; color:#e2e8f0; }
-        header { background:linear-gradient(90deg,#1e2937,#334155); padding:1rem 0; border-bottom:4px solid var(--red); }
-        .container { max-width:1200px; margin:0 auto; padding:0 20px; }
-        h1 { font-size:2.2rem; font-weight:600; display:flex; align-items:center; gap:12px; }
-        .badge { background:var(--red); color:white; padding:4px 12px; border-radius:9999px; font-size:0.9rem; font-weight:600; }
-        .main { display:grid; grid-template-columns:1fr 420px; gap:25px; margin-top:25px; }
-        @media (max-width:1024px) { .main { grid-template-columns:1fr; } }
-        .map-container { background:#1e2937; border-radius:16px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,0.4); height:620px; position:relative; }
-        #map { width:100%; height:100%; }
-        .card { background:#1e2937; border-radius:16px; padding:24px; box-shadow:0 10px 30px rgba(0,0,0,0.4); }
-        h2 { font-size:1.4rem; margin-bottom:14px; color:#f1f5f9; }
-        button { background:var(--red); color:white; border:none; padding:14px 24px; font-size:1.05rem; font-weight:600; border-radius:12px; cursor:pointer; width:100%; margin-top:8px; }
-        button:hover { background:#d12e2e; }
-        .status { padding:8px 16px; border-radius:9999px; font-size:0.95rem; font-weight:600; }
-        .live { background:#10b981; color:white; }
-        .result { background:#334155; border-radius:12px; padding:16px; margin-top:16px; display:none; }
+        :root { --primary: #60a5fa; --bg: #0f172a; --card: #1e293b; }
+        body { font-family: system-ui; background: var(--bg); color: white; margin: 0; padding: 20px; }
+        .main { display: grid; grid-template-columns: 1fr 350px; gap: 20px; max-width: 1200px; margin: 0 auto; }
+        #map { height: 600px; border-radius: 20px; border: 1px solid #334155; }
+        .card { background: var(--card); padding: 20px; border-radius: 20px; border: 1px solid #334155; }
+        .status { padding: 10px; border-radius: 10px; background: #064e3b; color: #4ade80; text-align: center; font-weight: bold; }
+        .coord-box { background: #0f172a; padding: 15px; border-radius: 10px; margin-top: 10px; }
+        .label { color: #94a3b8; font-size: 0.8rem; }
+        .value { font-family: monospace; font-size: 1.2rem; color: var(--primary); }
     </style>
 </head>
 <body>
-    <header>
-        <div class="container">
-            <h1>🛡️ BagGuard <span class="badge">即時追蹤</span></h1>
-            <p style="opacity:0.8;">自動從 ThingSpeak 讀取 GPS • 每 5 秒更新</p>
-        </div>
-    </header>
 
-    <div class="container">
-        <div class="main">
-            <!-- MAP -->
-            <div class="map-container">
-                <div id="map"></div>
+<div class="main">
+    <div id="map"></div>
+    <div class="side">
+        <div class="card">
+            <h2 style="margin-top:0">🛡️ BagGuard 狀態</h2>
+            <div id="live-status" class="status">🔄 正在同步數據...</div>
+            
+            <div class="coord-box">
+                <div class="label">緯度 Latitude (Field 1)</div>
+                <div id="live-lat" class="value">—</div>
             </div>
-
-            <!-- LIVE STATUS -->
-            <div>
-                <div class="card">
-                    <h2>🧳 袋子即時位置（自動更新）</h2>
-                    <div id="live-status" class="status live">🔄 連線中... 每 5 秒自動更新</div>
-                    <div id="last-update" style="margin-top:12px; font-size:0.95rem; color:#86efac;"></div>
-                    
-                    <div class="coords" style="margin-top:20px; display:flex; gap:20px; flex-wrap:wrap;">
-                        <div class="coord-item" style="background:#1e2937; padding:12px 18px; border-radius:10px; flex:1;">
-                            <div class="coord-label">緯度 Latitude</div>
-                            <div id="live-lat" class="coord-value" style="font-size:1.6rem; color:#60a5fa;">—</div>
-                        </div>
-                        <div class="coord-item" style="background:#1e2937; padding:12px 18px; border-radius:10px; flex:1;">
-                            <div class="coord-label">經度 Longitude</div>
-                            <div id="live-lng" class="coord-value" style="font-size:1.6rem; color:#60a5fa;">—</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- MANUAL BACKUP -->
-                <div class="card" style="margin-top:20px;">
-                    <h2>📨 手動貼 GPS（備用）</h2>
-                    <textarea id="gps-input" placeholder="+CGPSINFO: 2235.1234,N,11355.1234,E,..."></textarea>
-                    <button onclick="parseAndShowBagLocation()">🔍 解析並顯示在地圖</button>
-                </div>
-
-                <div class="card" style="margin-top:20px;">
-                    <h2>📍 我的目前位置</h2>
-                    <button onclick="getBrowserLocation()">📡 取得我的即時位置</button>
-                </div>
+            <div class="coord-box">
+                <div class="label">經度 Longitude (Field 2)</div>
+                <div id="live-lng" class="value">—</div>
             </div>
+            
+            <p id="last-update" style="font-size: 0.8rem; color: #94a3b8; margin-top: 20px;"></p>
+            <button onclick="getBrowserLocation()" style="width:100%; padding:10px; border-radius:10px; cursor:pointer;">顯示我的位置</button>
         </div>
     </div>
+</div>
 
-    <script>
-        let map = L.map('map').setView([22.2894, 113.9429], 15);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-        let bagMarker = null;
+<script>
+    const CHANNEL_ID = "3336521"; // 你的 Channel ID
+    let map = L.map('map').setView([22.2894, 113.9429], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    let bagMarker = null;
 
-        function updateBagMarker(lat, lon, timeStr) {
-            if (bagMarker) bagMarker.remove();
-            const icon = L.divIcon({html: `<div style="background:#f59e0b;width:28px;height:28px;border-radius:50%;border:3px solid white;box-shadow:0 0 10px rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;color:white;font-size:16px;">📍</div>`, iconSize:[28,28]});
-            bagMarker = L.marker([lat, lon], {icon}).addTo(map);
-            map.flyTo([lat, lon], 17);
-            
-            document.getElementById('live-lat').textContent = lat.toFixed(6);
-            document.getElementById('live-lng').textContent = lon.toFixed(6);
-            document.getElementById('last-update').innerHTML = `🕒 最後更新：${new Date(timeStr).toLocaleString('zh-TW')}`;
-        }
+    function fetchUpdate() {
+        // 关键点：使用 feeds/last.json 获取包含所有 Field 的最新记录
+        fetch(`https://api.thingspeak.com/channels/${CHANNEL_ID}/feeds/last.json`)
+            .then(res => res.json())
+            .then(data => {
+                const lat = parseFloat(data.field1);
+                const lng = parseFloat(data.field2);
+                
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    if (bagMarker) bagMarker.remove();
+                    bagMarker = L.marker([lat, lng]).addTo(map)
+                        .bindPopup("行李在此處").openPopup();
+                    
+                    map.panTo([lat, lng]);
+                    
+                    document.getElementById('live-lat').innerText = lat.toFixed(6);
+                    document.getElementById('live-lng').innerText = lng.toFixed(6);
+                    document.getElementById('last-update').innerText = "最後同步: " + new Date(data.created_at).toLocaleString();
+                    document.getElementById('live-status').innerText = "✅ 設備在線";
+                }
+            })
+            .catch(() => {
+                document.getElementById('live-status').innerText = "⚠️ 連線失敗";
+            });
+    }
 
-        // Auto fetch from ThingSpeak every 5 seconds
-        function fetchThingSpeak() {
-            fetch('https://api.thingspeak.com/channels/3336521/fields/1/last.json')
-                .then(res => res.json())
-                .then(data => {
-                    if (data.field1 && data.field2 && data.field1 !== "-1") {
-                        const lat = parseFloat(data.field1);
-                        const lon = parseFloat(data.field2);
-                        if (!isNaN(lat) && !isNaN(lon)) {
-                            updateBagMarker(lat, lon, data.created_at || new Date());
-                            document.getElementById('live-status').innerHTML = '✅ 即時連線中 • 自動更新';
-                        }
-                    } else {
-                        document.getElementById('live-status').innerHTML = '⏳ 等待第一筆 GPS 資料...';
-                    }
-                })
-                .catch(() => {
-                    document.getElementById('live-status').innerHTML = '⚠️ 連線失敗（請確認頻道公開）';
-                });
-        }
+    setInterval(fetchUpdate, 5000);
+    window.onload = fetchUpdate;
 
-        setInterval(fetchThingSpeak, 5000);
-        window.onload = fetchThingSpeak;   // first load
-
-        // Backup manual paste function (same as before)
-        window.parseAndShowBagLocation = function() {
-            const input = document.getElementById('gps-input').value.trim();
-            if (!input) return alert("請貼上 GPS 資料");
-            // ... (same parse function as previous version)
-            // I kept it simple, you can use old parse if needed
-        };
-
-        window.getBrowserLocation = function() { /* same as previous */ };
+    function getBrowserLocation() {
+        navigator.geolocation.getCurrentPosition(p => {
+            L.circle([p.coords.latitude, p.coords.longitude], {radius: 50, color: 'red'}).addTo(map).bindPopup("我的位置");
+        });
+    }
+</script>
+</body>
+</html>
